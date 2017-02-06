@@ -14,18 +14,17 @@ it exports values exposed by the metric subsystem
 extern struct uwsgi_server uwsgi;
 
 /*
-JSON body:
+LINE body:
 
-[{"name":"NAME","columns":["value"],"points":[[VALUE]]}]\0
+<measurement>[,<tag_key>=<tag_value>[,<tag_key>=<tag_value>]] <field_key>=<field_value>[,<field_key>=<field_value>]
 */
 static void influxdb_send_metric(struct uwsgi_buffer *ub, char *url, char *metric, size_t metric_len, int64_t value) {
 	// reset the buffer
 	ub->pos = 0;
-	if (uwsgi_buffer_append(ub, "[{\"name\":\"", 10)) goto error;	
-	if (uwsgi_buffer_append_json(ub, metric, metric_len)) goto error;
-	if (uwsgi_buffer_append(ub, "\",\"columns\":[\"value\"],\"points\":[[", 33)) goto error;
-        if (uwsgi_buffer_num64(ub, value)) goto error;
-	if (uwsgi_buffer_append(ub, "]]}]\0", 5)) goto error;
+	if (uwsgi_buffer_append(ub, metric, metric_len)) goto error;
+	if (uwsgi_buffer_append(ub, " value=", 7)) goto error;
+	if (uwsgi_buffer_num64(ub, value)) goto error;
+	if (uwsgi_buffer_append(ub, "\0", 1)) goto error;
 
 	// now send the JSON to the influxdb server via curl
 	CURL *curl = curl_easy_init();
@@ -56,8 +55,8 @@ static void influxdb_send_metric(struct uwsgi_buffer *ub, char *url, char *metri
 #else
 	curl_easy_getinfo(curl, CURLINFO_HTTP_CODE, &http_code);
 #endif
-	if (http_code != 200) {
-		uwsgi_log_verbose("[influxdb] HTTP api returned non-200 response code for %.*s: %d\n", metric_len, metric, (int) http_code);
+	if (http_code != 204) {
+		uwsgi_log_verbose("[influxdb] HTTP api returned non-204 response code for %.*s: %d\n", metric_len, metric, (int) http_code);
 	}
 	curl_easy_cleanup(curl);
 	return;
